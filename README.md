@@ -341,7 +341,7 @@ julia compare_saaq1_5_baseline_pair.jl
 ```
 
 This writes a compact PNG plus markdown summary under
-`outputs/olmoe-1b-7b/dashboards/`.
+`outputs/olmoe_1b_7b_f16/dashboards/`.
 
 ## Tests
 
