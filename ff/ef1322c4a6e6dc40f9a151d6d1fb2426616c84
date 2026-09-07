@@ -1,0 +1,37 @@
+test/runtests.jl
+  s_2d5f80fb8407b9::t_f059ef6ac81711 729-730
+  s_2d5f80fb8407b9::t_016f60a4125155 446,460-462
+src/Surrogate_Viz.jl
+  s_2d5f80fb8407b9::t_5e440a81d2fbc0 235-276
+  s_2d5f80fb8407b9::t_44cccf8761ac34 395
+src/normalizers/SaaqNormalizer.jl
+  s_2d5f80fb8407b9::t_b1d4ae0b03b6d8 11-12
+  s_2d5f80fb8407b9::t_f0e02523d0003f 56-60
+test/telemetry_provenance_test.jl
+  s_2d5f80fb8407b9::t_051454c5db7594 1-88
+test/fixtures/bundles/synthetic_fallback_run/summary.json
+  s_2d5f80fb8407b9::t_6202427dd326b7 1-17
+scripts/build_saaq_dashboard.jl
+  s_2d5f80fb8407b9::t_6829a1527b5cad 242-251
+  s_2d5f80fb8407b9::t_e08572f22bcfe3 115-121
+  s_2d5f80fb8407b9::t_816e1adac1095d 154-165
+  s_2d5f80fb8407b9::t_dc41910b2e720f 184-187
+test/fixtures/bundles/synthetic_fallback_run/run_manifest.json
+  s_2d5f80fb8407b9::t_6202427dd326b7 1-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "ffef1322c4a6e6dc40f9a151d6d1fb2426616c84",
+  "prompts": {},
+  "sessions": {
+    "s_2d5f80fb8407b9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "236ff508-26fa-466a-b4dd-3ff2f464f60f",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Raul Montoya Cardenas <montoyaraul34@gmail.com>"
+    }
+  }
+}
