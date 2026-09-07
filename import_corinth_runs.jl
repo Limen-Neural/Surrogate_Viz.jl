@@ -1,9 +1,15 @@
-const PkgMod = Base.require(Base.PkgId(Base.UUID("44cfe95a-1eb2-52ea-b672-e2afdf69b78f"), "Pkg"))
-PkgMod.activate(@__DIR__)
-const TOML = Base.require(Base.PkgId(Base.UUID("fa267f1f-6049-4f14-aa54-33bafae1ed76"), "TOML"))
+using Pkg
+
+# Only take over the active project when run as a script. Activating at load
+# time would switch the caller's project out from under them when this file is
+# `include`d — which the smoke tests do.
+if abspath(PROGRAM_FILE) == @__FILE__
+    Pkg.activate(@__DIR__)
+end
 
 using CSV
 using DataFrames
+using TOML
 
 const REPO_ROOT = @__DIR__
 const SELECTED_RUNS_PATH = joinpath(REPO_ROOT, "data", "selected_runs.toml")
@@ -106,4 +112,6 @@ function main()
     println("Note: imports prefer symlinks and fall back to copies if symlinks are unavailable")
 end
 
-main()
+if abspath(PROGRAM_FILE) == @__FILE__
+    main()
+end

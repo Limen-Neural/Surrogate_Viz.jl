@@ -723,3 +723,5 @@ end
     @test nrow(metrics_df) > 0
     @test nrow(issues_df) > 0
 end
+
+include("smoke_scripts_test.jl")
