@@ -18,6 +18,7 @@ deps/deps.jl
 .kiro/
 .opencode/
 .mimocode/
+.claude/
 *.swp
 *.swo
 *~
