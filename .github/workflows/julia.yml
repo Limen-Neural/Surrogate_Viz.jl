@@ -18,11 +18,11 @@ jobs:
     # GPU runner, and also covers fork PRs.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: julia-actions/setup-julia@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: julia-actions/setup-julia@4c0cb0fce8556fdb04a90347310e5db8b1f98fb9 # v2.7.0
         with:
           version: "1.12"
-      - uses: julia-actions/cache@v2
+      - uses: julia-actions/cache@d10a6fd8f31b12404a54613ebad242900567f2b9 # v2.1.0
       - name: Instantiate
         run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
       - name: Run tests
@@ -34,8 +34,15 @@ jobs:
     if: >-
       github.event_name == 'push' ||
       github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      # Resolve packages into a workspace-local depot rather than the runner
+      # account's shared ~/.julia. That account hosts several repositories'
+      # runners, so a tampered package resolved by any one of them would
+      # otherwise persist in the shared depot for every later job on this host.
+      # See .github/RUNNER.md for the full trust boundary.
+      JULIA_DEPOT_PATH: ${{ github.workspace }}/.julia_depot
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Instantiate with CUDA
         run: julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.add("CUDA")'
       - name: Run tests
@@ -55,7 +62,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Host GPU/Docker preflight
         run: |
           set -eux
@@ -191,7 +198,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Run CUDA + Julia 1.12 visual kernel tests inside pinned nvidia/cuda container
         run: |
           # Make sure the script is executable (in case git checkout didn't preserve mode)
