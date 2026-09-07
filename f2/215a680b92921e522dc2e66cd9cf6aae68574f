@@ -1,0 +1,21 @@
+test/runtests.jl
+  s_2d5f80fb8407b9::t_bd419ad7001014 726-777
+src/normalizers/GrokOzempicNormalizer.jl
+  s_2d5f80fb8407b9::t_97bab607b96730 82-97,101-102,111,118,124-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "f2215a680b92921e522dc2e66cd9cf6aae68574f",
+  "prompts": {},
+  "sessions": {
+    "s_2d5f80fb8407b9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "236ff508-26fa-466a-b4dd-3ff2f464f60f",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Raul Montoya Cardenas <montoyaraul34@gmail.com>"
+    }
+  }
+}
