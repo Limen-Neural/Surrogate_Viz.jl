@@ -8,6 +8,8 @@ const _parent_mod = parentmodule(@__MODULE__)
 const _load_saaq_bundle = getfield(_parent_mod, :load_saaq_bundle)
 const _nothing_to_missing = getfield(_parent_mod, :_nothing_to_missing)
 const _saaq_bundle_type = getfield(_parent_mod, :SaaqBundle)
+const _telemetry_provenance = getfield(_parent_mod, :telemetry_provenance)
+const _is_measured_telemetry = getfield(_parent_mod, :is_measured_telemetry)
 
 """
     normalize_saaq_bundle_to_tables(bundle_path::AbstractString) -> (DataFrame, DataFrame, DataFrame)
@@ -51,6 +53,11 @@ function normalize_bundle_to_tables(bundle::_saaq_bundle_type)::Tuple{DataFrame,
         "saaq_formula_version" => m.saaq_rule,
         "saaq_dual_emit" => m.saaq_dual_emit,
         "telemetry_source" => m.telemetry_source,
+        # Derived, and deliberately separate from run_status: a run can be
+        # `completed` (run_status == real) while its telemetry was synthesised.
+        # Downstream consumers must key "is this real data?" off provenance.
+        "telemetry_provenance" => _telemetry_provenance(m.telemetry_source),
+        "telemetry_measured" => _is_measured_telemetry(m.telemetry_source),
         "routing_mode" => m.routing_mode,
         "run_tag" => m.run_tag,
         "repeat_idx" => m.repeat_idx,

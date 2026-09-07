@@ -1,0 +1,17 @@
+{
+  "run_id": "synthetic_fallback_run",
+  "model_slug": "test-llama-3.2-1b",
+  "model_family": "Llama3.2",
+  "telemetry_source": "csv_re4_path_tracing_telemetry",
+  "repeat_idx": 0,
+  "repeat_count": 1,
+  "saaq_rule": "SaaqV1_5SqrtRate",
+  "validation_status": "completed",
+  "run_dir": "artifacts/issue-40-local/test-llama-3.2-1b/csv_re4_path_tracing_telemetry/test_missing_optional_20260528T120003",
+  "manifest_path": "artifacts/issue-40-local/test-llama-3.2-1b/csv_re4_path_tracing_telemetry/test_missing_optional_20260528T120003/run_manifest.json",
+  "tick_telemetry_path": "artifacts/issue-40-local/test-llama-3.2-1b/csv_re4_path_tracing_telemetry/test_missing_optional_20260528T120003/tick_telemetry.txt",
+  "latent_telemetry_path": "artifacts/issue-40-local/test-llama-3.2-1b/csv_re4_path_tracing_telemetry/test_missing_optional_20260528T120003/latent_telemetry.csv",
+  "metrics": {
+    "ticks_completed": 512
+  }
+}
