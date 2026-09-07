@@ -356,6 +356,7 @@ export GrokOzempicFailure, GrokOzempicWarning, GrokOzempicReport, GrokOzempicBun
 export load_grok_ozempic_bundle, validate_grok_ozempic_bundle
 export normalize_grok_ozempic_to_tables, normalize_grok_ozempic_dir, normalize_grok_ozempic_bundle_to_tables
 export pretty_condition, pretty_column, pretty_model
+export KNOWN_MODEL_SLUGS, known_model_slugs_consistent
 export classify_walkers, walker_label, WalkerGroup
 
 end # module Surrogate_Viz
