@@ -1,0 +1,27 @@
+docs/validation.md
+  s_246fce61592f7d::t_97398dee74a168 119-126
+test/runtests.jl
+  s_246fce61592f7d::t_1abdfb2da26724 726-780
+src/normalizers/SaaqNormalizer.jl
+  s_246fce61592f7d::t_d0e99c8e956a96 129-135,144-147
+  s_246fce61592f7d::t_094d7acb07bcb4 175-189
+  s_246fce61592f7d::t_3b9dd2afd0352d 194-195,200-203
+  s_246fce61592f7d::t_e3ac3da27f7195 222-227
+  s_246fce61592f7d::t_e4811a1ba11ff3 143,153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "0441e5d777a1f6727d22347fa54347d80671c6af",
+  "prompts": {},
+  "sessions": {
+    "s_246fce61592f7d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a8229f59-9467-4402-9a79-bf7cc4ac864f",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Raul Montoya Cardenas <montoyaraul34@gmail.com>"
+    }
+  }
+}
