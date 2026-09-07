@@ -1,0 +1,25 @@
+.github/workflows/docker-build.yml
+  s_2d5f80fb8407b9::t_986fea557f515c 25,49
+.github/workflows/julia.yml
+  s_2d5f80fb8407b9::t_cf382e7bf6b69a 43
+  s_2d5f80fb8407b9::t_986fea557f515c 21-22,25,45,65,201
+  s_2d5f80fb8407b9::t_e0e96063617961 37-42
+.github/workflows/docker-publish.yml
+  s_2d5f80fb8407b9::t_986fea557f515c 37,52,59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "729c339a89980b4d6925763228d2e351cdf83da3",
+  "prompts": {},
+  "sessions": {
+    "s_2d5f80fb8407b9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "236ff508-26fa-466a-b4dd-3ff2f464f60f",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Raul Montoya Cardenas <montoyaraul34@gmail.com>"
+    }
+  }
+}
