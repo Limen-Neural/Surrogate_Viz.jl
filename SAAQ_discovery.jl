@@ -31,12 +31,30 @@ const REPO_ROOT = @__DIR__
 const TELEMETRY_PATH = joinpath(REPO_ROOT, "data", "hardware_telemetry.csv")
 
 """
-Combined GPU + CPU package watts treated as full load when normalising the
-target.
+Combined GPU + CPU package watts used as the divisor for the regression target.
 
-Chosen as a thermal-headroom ceiling rather than a hardware maximum: an earlier
-value of 500.0 W left a sustained 432 W draw at 0.864, never reaching 1.0, so
-the search never saw the saturated end of the range during a thermal transient.
+**This does not bound the target to [0, 1].** It is a thermal-headroom
+reference, not a hardware maximum, and the data routinely exceeds it. Measured
+against the committed `data/hardware_telemetry.csv` (2000 rows):
+
+| | watts | target |
+|---|---|---|
+| minimum | 290.3 | 0.726 |
+| first row | 413.4 | 1.034 |
+| maximum | 467.8 | 1.169 |
+
+1589 of 2000 rows (79.4%) land above 1.0.
+
+That is the intended direction — an earlier divisor of 500.0 W left a sustained
+432 W draw at 0.864, so the target never reached the saturated end of the range
+during a thermal transient and the search never saw it. But note the current
+value overshoots: exceeding 1.0 is the common case rather than the exceptional
+one, so "above 1.0" carries little signal as a saturation marker.
+
+Deliberately not retuned here. Picking a divisor that makes the distribution
+straddle 1.0 sensibly requires deciding what the target is meant to represent,
+which is a modelling decision, not a cleanup. `main` prints the observed
+fraction above 1.0 on every run so the choice stays visible.
 """
 const FULL_LOAD_WATTS = 400.0
 
@@ -100,6 +118,16 @@ function main()
     niterations = parse(Int, get(ENV, "SR_ITERATIONS", "30"))
     row_limit = parse(Int, get(ENV, "ROW_LIMIT", string(DEFAULT_ROW_LIMIT)))
 
+    # ROW_LIMIT must be positive: 0 would hand equation_search an empty dataset,
+    # and a negative value makes `first` throw with a message that says nothing
+    # about where the value came from.
+    row_limit > 0 || error(
+        "SAAQ_discovery.jl: ROW_LIMIT must be a positive integer, got $(row_limit).",
+    )
+    niterations >= 0 || error(
+        "SAAQ_discovery.jl: SR_ITERATIONS must be >= 0 (0 means dry run), got $(niterations).",
+    )
+
     isfile(TELEMETRY_PATH) || error(
         "SAAQ_discovery.jl: telemetry not found at $(TELEMETRY_PATH).",
     )
@@ -113,6 +141,16 @@ function main()
     println("2. Building features (NOTE: SNN firing rate is synthetic — see header)")
     X, y, variable_names = build_features(df)
     println("   features $(size(X, 1)) x rows $(size(X, 2))")
+
+    # Report the target's actual range. FULL_LOAD_WATTS is a reference point,
+    # not a bound, so this is where an unhelpful divisor becomes visible rather
+    # than staying an assumption in the docstring.
+    over = count(>(1.0), y)
+    println("   target range    $(round(minimum(y), digits=3)) .. $(round(maximum(y), digits=3)) " *
+            "(divisor $(FULL_LOAD_WATTS) W)")
+    println("   above 1.0       $(over)/$(length(y)) rows " *
+            "($(round(100 * over / length(y), digits=1))%)" *
+            (over > length(y) ÷ 2 ? "  <- majority; divisor is low for a saturation marker" : ""))
 
     if niterations <= 0
         println("SR_ITERATIONS=0 — skipping the search (dry run)")
