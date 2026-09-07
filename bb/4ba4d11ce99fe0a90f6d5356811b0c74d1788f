@@ -1,0 +1,21 @@
+SAAQ_discovery.jl
+  s_2aea868e654231::t_1d146ca98acc6e 145-154
+  s_2aea868e654231::t_45f4b63c079370 34-57
+  s_2aea868e654231::t_d09730c132a12f 121-130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "bb4ba4d11ce99fe0a90f6d5356811b0c74d1788f",
+  "prompts": {},
+  "sessions": {
+    "s_2aea868e654231": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1cb8cc0-aeaf-492b-8869-f73fffb73fc2",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Raul Montoya Cardenas <montoyaraul34@gmail.com>"
+    }
+  }
+}
