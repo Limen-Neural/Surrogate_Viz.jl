@@ -625,6 +625,91 @@ end
     end
 end
 
+@testset "walker density histogram — CPU kernel correctness" begin
+    # This feature shipped with no Test.jl assertions at all: its only exercise
+    # anywhere was `@assert length(counts) == 32` inside
+    # .github/scripts/run_cuda_visuals.sh, a shell script that runs solely on
+    # the self-hosted runner and is skipped for fork PRs.
+    plain = Surrogate_Viz._plain_walker_histogram
+
+    # bin_size = (max_walker + 1) / n_bins = 8/4 = 2, so bins cover
+    # [0,2) [2,4) [4,6) [6,8).
+    @test plain([0, 1, 2, 3, 4, 5, 6, 7], 4, 7) == [2, 2, 2, 2]
+    @test plain([0, 0, 0], 4, 7) == [3, 0, 0, 0]
+    @test plain(Int[], 4, 7) == [0, 0, 0, 0]
+
+    # Boundary: max_walker itself must land in the last bin, not past it.
+    @test plain([7], 4, 7) == [0, 0, 0, 1]
+
+    # Out-of-range values are clamped into the edge bins rather than throwing
+    # or corrupting memory. Worth pinning: it means bad data is absorbed
+    # silently, which is a known limitation, not an accident.
+    @test plain([-5], 4, 7) == [1, 0, 0, 0]
+    @test plain([9999], 4, 7) == [0, 0, 0, 1]
+
+    # Counts must always account for every input.
+    for input in ([0, 3, 7], [1, 1, 1, 1], Int[], [-2, 99])
+        @test sum(plain(input, 4, 7)) == length(input)
+    end
+end
+
+@testset "walker_density_bins_and_counts — edges and dispatch" begin
+    edges, counts = walker_density_bins_and_counts([0, 1, 2, 3]; n_bins = 4, max_walker = 7)
+
+    @test length(edges) == 5          # n_bins + 1
+    @test length(counts) == 4
+    @test first(edges) == 0
+    @test last(edges) == 7
+    @test counts == [2, 2, 0, 0]
+    @test sum(counts) == 4
+
+    # Shipped defaults, which the CI shell script asserts the length of.
+    edges32, counts32 = walker_density_bins_and_counts([0, 2047])
+    @test length(counts32) == 32
+    @test length(edges32) == 33
+    @test counts32[1] == 1            # walker 0 -> first bin
+    @test counts32[end] == 1          # walker 2047 -> last bin
+
+    # Both public entry points must route through the same dispatch and agree.
+    _, via_public = walker_density_bins_and_counts([0, 3, 7]; n_bins = 4, max_walker = 7)
+    via_cuda_named = Surrogate_Viz.cuda_best_walker_density_histogram(
+        [0, 3, 7]; n_bins = 4, max_walker = 7)
+    @test via_public == via_cuda_named
+end
+
+@testset "walker density — GPU fallback is announced, not silent" begin
+    # walker_density_bins_and_counts used to fall back to the CPU with no log
+    # line at all, while every sibling dispatcher in kernels.jl warned. A caller
+    # asking for the GPU path got the CPU one with no way to notice.
+    if !has_cuda()
+        @test_logs (:warn, r"CUDA is not functional") match_mode = :any begin
+            walker_density_bins_and_counts([0, 1]; n_bins = 4, max_walker = 7)
+        end
+        # The named entry point warns on the same condition rather than
+        # carrying its own divergent message.
+        @test_logs (:warn, r"CUDA is not functional") match_mode = :any begin
+            Surrogate_Viz.cuda_best_walker_density_histogram([0, 1]; n_bins = 4, max_walker = 7)
+        end
+    else
+        # With CUDA functional the GPU path is taken and must not warn about
+        # being unavailable.
+        @test walker_density_bins_and_counts([0, 1]; n_bins = 4, max_walker = 7)[2] isa Vector
+    end
+
+    # The branch above is environment-dependent: under Pkg.test() CUDA is absent
+    # so the fallback is exercised, but on the self-hosted runner `Pkg.add("CUDA")`
+    # runs first and the fallback cannot be reached at all. Assert on the source
+    # so both distinct messages are guarded in either environment — collapsing
+    # them back into one (which is how the wrong "CUDA not available" text
+    # survived in a branch where CUDA *was* functional) fails here.
+    kernels_src = read(joinpath(@__DIR__, "..", "src", "kernels.jl"), String)
+    @test occursin("CUDA is not functional", kernels_src)
+    @test occursin("CUDABackendExt extension is not loaded", kernels_src)
+    # Exactly one dispatch helper — the two public entry points must not grow
+    # their own copies of the selection logic again.
+    @test count(_ -> true, eachmatch(r"function _walker_histogram_dispatch", kernels_src)) == 1
+end
+
 using Surrogate_Viz: GrokOzempicFailure, GrokOzempicWarning, GrokOzempicReport, GrokOzempicBundle
 using Surrogate_Viz: load_grok_ozempic_bundle, validate_grok_ozempic_bundle
 using Surrogate_Viz: normalize_grok_ozempic_to_tables, normalize_grok_ozempic_dir, normalize_grok_ozempic_bundle_to_tables
