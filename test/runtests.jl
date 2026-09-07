@@ -44,6 +44,45 @@ end
     @test pretty_model("unknown_model") == "unknown_model"
 end
 
+@testset "KNOWN_MODEL_SLUGS — single source for the model roster" begin
+    slugs = Surrogate_Viz.KNOWN_MODEL_SLUGS
+
+    # Order is part of the contract: scripts iterate this to lay out panels and
+    # table rows, so a reordering is a presentation change, not a no-op.
+    @test slugs == [
+        "olmoe_1b_7b_f16",
+        "qwen3_moe_iq3_m",
+        "gemma4_26b_a4b_iq4_nl",
+        "deepseek_coder_v2_lite_q6_k_l",
+        "llama_3_2_dark_champion_q5_k_m",
+        "zaya1_8b_q8_0",
+        "kimi_vl_a3b_q6_k",
+        "marco_nano_base_q8_0",
+    ]
+
+    @test length(slugs) == 8
+    @test allunique(slugs)
+
+    # The list and MODEL_DISPLAY are two views of one roster — the list carries
+    # order, the dict carries display names. Nothing in the language keeps them
+    # aligned, so adding to one without the other must fail here rather than
+    # drift silently.
+    @test Surrogate_Viz.known_model_slugs_consistent()
+    @test Set(slugs) == Set(keys(Surrogate_Viz.MODEL_DISPLAY))
+
+    # Every slug must resolve to a real display name, not fall through
+    # pretty_model's identity default.
+    for s in slugs
+        @test pretty_model(s) != s
+    end
+
+    # The placeholder slugs removed in GH#40/MET-115 must not come back. The
+    # rename is why this roster was consolidated in the first place.
+    for stale in ("olmoe_baseline", "qwen3_moe_i1_iq3_m", "olmoe-1b-7b")
+        @test !(stale in slugs)
+    end
+end
+
 @testset "walker behavioral labels" begin
     tick_data = DataFrame(best_walker = vcat(fill(10, 50), fill(20, 49), [30]))
     groups = classify_walkers(tick_data; attractor_threshold=0.5, rare_threshold=0.02)

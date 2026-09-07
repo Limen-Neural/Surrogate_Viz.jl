@@ -15,17 +15,11 @@ const SV = getfield(Main, :Surrogate_Viz)
 
 const TICK_PATTERN = r"^tick=(\d+) best_walker=(\d+) elapsed_us=(\d+) gpu_temp_c=([-+0-9.eE]+) gpu_power_w=([-+0-9.eE]+) cpu_tctl_c=([-+0-9.eE]+) cpu_package_power_w=([-+0-9.eE]+)$"
 
-const MODELS = [
-    "olmoe_1b_7b_f16",                                # olmoe (active slug post #40)
-    "qwen3_moe_iq3_m",                                # qwen3_moe_iq3_m (active slug)
-    "gemma4_26b_a4b_iq4_nl",                          # gemma4 (active slug)
-    "deepseek_coder_v2_lite_q6_k_l",                  # deepseek (active slug)
-    "llama_3_2_dark_champion_q5_k_m",                 # llama (active slug)
-    "zaya1_8b_q8_0",                                  # zaya (active slug)
-    "kimi_vl_a3b_q6_k",                               # kimi (active slug)
-    "marco_nano_base_q8_0",                           # marco (active slug, qwen3moe family)
-    # NOTE (Grok Build 0.1 model, #40 / MET-115): Updated to active slugs from selected_runs / corinth_runs (GGUF placeholder names removed as part of dedup/hygiene cleanup). Old GGUF names were legacy placeholders for the validation plot CLI. Qwen hygiene: this run will populate the missing dashboards/ under the slug dir.
-]
+# Sourced from the label registry rather than retyped. Previously this list and
+# compare_full_lineup_saaq1_5.jl's MODEL_ORDER were byte-identical copies of
+# MODEL_DISPLAY's key set, so the GH#40/MET-115 slug rename (dropping GGUF
+# placeholder names) had to be applied by hand in three places.
+const MODELS = SV.KNOWN_MODEL_SLUGS
 
 function model_name()
     m = get(ENV, "MODEL", MODELS[1])  # default olmoe-1b-7b

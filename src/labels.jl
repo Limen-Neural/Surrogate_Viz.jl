@@ -64,6 +64,47 @@ function pretty_model(slug::AbstractString)::String
     get(MODEL_DISPLAY, slug, slug)
 end
 
+"""
+    KNOWN_MODEL_SLUGS
+
+The active model roster, in canonical presentation order.
+
+`MODEL_DISPLAY` above is a `Dict` and therefore unordered, so it cannot serve
+as the roster on its own — scripts that iterate models need a stable sequence.
+This is that sequence, and it is the single place the roster is declared.
+
+Before this existed the same eight slugs were retyped in three files
+(`compare_full_lineup_saaq1_5.jl`'s `MODEL_ORDER`,
+`plot_saaq1_5_validation.jl`'s `MODELS`, and `MODEL_DISPLAY`'s key set), so a
+rename needed three synchronised hand-edits with nothing tying them together —
+and the repo has already been through exactly that rename once (GH#40).
+
+`known_model_slugs_consistent()` asserts this list and `MODEL_DISPLAY` describe
+the same set, so adding to one without the other is a test failure rather than
+a silent drift.
+"""
+const KNOWN_MODEL_SLUGS = [
+    "olmoe_1b_7b_f16",
+    "qwen3_moe_iq3_m",
+    "gemma4_26b_a4b_iq4_nl",
+    "deepseek_coder_v2_lite_q6_k_l",
+    "llama_3_2_dark_champion_q5_k_m",
+    "zaya1_8b_q8_0",
+    "kimi_vl_a3b_q6_k",
+    "marco_nano_base_q8_0",
+]
+
+"""
+    known_model_slugs_consistent() -> Bool
+
+True when `KNOWN_MODEL_SLUGS` and the keys of `MODEL_DISPLAY` are the same set.
+
+They are two views of one roster: the list gives order, the dict gives display
+names. Nothing in the language keeps them aligned, so this is asserted in the
+test suite.
+"""
+known_model_slugs_consistent() = Set(KNOWN_MODEL_SLUGS) == Set(keys(MODEL_DISPLAY))
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Walker behavioral groups
 # ──────────────────────────────────────────────────────────────────────────────
