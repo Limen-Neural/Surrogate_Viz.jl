@@ -3,8 +3,7 @@ module CUDABackendExt
 using Statistics
 using CUDA
 import Surrogate_Viz: CPUBackend, CUDABackend, _plain_walker_histogram, compute_delta_per_tick,
-    compute_pairwise_deltas, compute_run_stats, cuda_best_walker_density_histogram,
-    has_cuda
+    compute_pairwise_deltas, compute_run_stats, has_cuda
 
 function _compute_pairwise_deltas_cuda(off_col::AbstractVector, on_col::AbstractVector)
     off_host = Float32.(collect(off_col))
@@ -96,16 +95,19 @@ function _cuda_best_walker_density_histogram(
     return Int.(Array(d_hist))
 end
 
-function cuda_best_walker_density_histogram(
-    best_walkers::AbstractVector{Int};
-    n_bins::Int=32,
-    max_walker::Int=2047,
-)
-    if !has_cuda()
-        @warn "CUDA unavailable; using CPU fallback for walker density histogram"
-        return _plain_walker_histogram(best_walkers, n_bins, max_walker)
-    end
-    return _cuda_best_walker_density_histogram(best_walkers; n_bins=n_bins, max_walker=max_walker)
-end
+# NOTE: this extension deliberately does NOT define a public
+# `cuda_best_walker_density_histogram`. It used to, with the identical
+# signature to the one in src/kernels.jl — and because the name is imported
+# from the parent above, that was a method *replacement*, not an addition.
+# Loading the extension silently swapped out the parent's implementation
+# (which is also what triggered "Method overwriting is not permitted during
+# Module precompilation"), so the named entry point kept its own fallback
+# branch, its own out-of-date warning text, and no maxlog — the exact drift
+# between the two entry points that consolidating the dispatch was meant to
+# end.
+#
+# The parent's dispatcher reaches the GPU path through
+# `_cuda_best_walker_density_histogram` above, so nothing here needs a public
+# wrapper.
 
 end # module CUDABackendExt
