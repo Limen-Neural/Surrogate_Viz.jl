@@ -175,11 +175,26 @@ can be repointed by its maintainer or by whoever compromises that account.
 `docker/setup-buildx-action` is pinned to a full commit SHA; the rest are not
 yet.
 
-### `gpu-preflight` cannot fail
+### `gpu-preflight` is green whenever Docker works, regardless of the GPU
 
-Nearly every command in that job ends in `|| true`, so it reports success even
-when GPU passthrough is broken. It is diagnostic output, not a gate. Read its
-log; do not treat its green check as evidence the GPU works.
+The job runs under `set -eux`, and three commands are deliberately unguarded
+(`julia.yml:69-71`):
+
+```bash
+[ -n "$DOCKER_BIN" ]
+"$DOCKER_BIN" version
+"$DOCKER_BIN" info | sed -n '1,80p'
+```
+
+So it *does* fail — but only when Docker itself is missing or its daemon is
+unreachable. Every GPU check after that point ends in `|| true` or an `echo`
+fallback, including the `--gpus all` passthrough tests and the explicit "GPU
+passthrough check FAILED" branch, which prints diagnostics and then exits 0.
+
+The practical consequence: a green `gpu-preflight` means *Docker is alive on
+the host*. It is not evidence the GPU is usable. Read the log — or rely on
+`cuda-visuals`, which does hard-assert via `CUDA.functional()` in
+`run_cuda_visuals.sh:53`.
 
 ### There is no branch protection
 
