@@ -41,13 +41,18 @@ jobs:
       # otherwise persist in the shared depot for every later job on this host.
       # See .github/RUNNER.md for the full trust boundary.
       #
-      # Deliberately runner.workspace (_work/<repo>), NOT github.workspace
-      # (_work/<repo>/<repo>). actions/checkout defaults to clean: true, which
-      # runs `git clean -ffdx` — and -x deletes ignored files, which a depot
-      # under the checkout would be. Siting it one level up keeps it out of
-      # checkout's reach, so it survives between runs of this repo while
-      # staying isolated from every other repo on the host.
-      JULIA_DEPOT_PATH: ${{ runner.workspace }}/julia_depot
+      # Sited one level ABOVE the checkout on purpose. actions/checkout defaults
+      # to clean: true, which runs `git clean -ffdx` — and -x deletes ignored
+      # files, which a depot inside the checkout would be. Putting it in the
+      # parent keeps it out of checkout's reach, so it survives between runs of
+      # this repo while staying isolated from every other repo on the host.
+      #
+      # Written as `github.workspace/..` rather than `runner.workspace`, which
+      # names that directory directly but is NOT available in a job-level env
+      # block: using it made the whole workflow fail to parse (the run showed up
+      # as ".github/workflows/julia.yml: failure" with no jobs at all, rather
+      # than as "Julia CI"). The github context is available here.
+      JULIA_DEPOT_PATH: ${{ github.workspace }}/../julia_depot
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Instantiate with CUDA
