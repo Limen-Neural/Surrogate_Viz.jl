@@ -16,6 +16,11 @@ using Pkg
 
 const REPO_ROOT = normpath(joinpath(@__DIR__, ".."))
 
+# Scripts that pull in src/Surrogate_Viz.jl and alias it as SV. Listing them
+# explicitly means dropping the binding is a failure, not a silently skipped
+# assertion. import_corinth_runs.jl is deliberately absent — it has no SV.
+const SCRIPTS_BINDING_SV = Set(["SAAQ_latent_discovery.jl"])
+
 """
     smoke_include(relpath) -> (Module, before, after)
 
@@ -76,6 +81,13 @@ end
             # Any Surrogate_Viz binding the script sets up must resolve inside
             # the sandbox, not via Main. Reading it from Main appears to work
             # only because runtests.jl has already done `using Surrogate_Viz`.
+            #
+            # Scripts that are *expected* to bind SV assert its presence, so a
+            # regression that drops the binding fails rather than skipping the
+            # identity check below.
+            if script in SCRIPTS_BINDING_SV
+                @test isdefined(m, :SV)
+            end
             if isdefined(m, :SV)
                 @test isdefined(m, :Surrogate_Viz)
                 @test getfield(m, :SV) === getfield(m, :Surrogate_Viz)
