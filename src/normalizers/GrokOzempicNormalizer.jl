@@ -88,28 +88,78 @@ function normalize_grok_ozempic_dir(input_dir::AbstractString)::Tuple{DataFrame,
         error("Input directory not found: $(input_dir)")
     end
 
+    n_found = 0
+    n_failed = 0
+
     for (root, dirs, files) in walkdir(input_dir)
         if "validation.report.json" in files
             bundle_path = root
+            n_found += 1
             try
                 runs_df, metrics_df, issues_df = normalize_grok_ozempic_bundle_to_tables(bundle_path)
                 push!(runs_dfs, runs_df)
                 push!(metrics_dfs, metrics_df)
                 push!(issues_dfs, issues_df)
             catch e
+                n_failed += 1
                 @warn "Failed to load grok-ozempic bundle at $(bundle_path): $(e)"
+                # A bundle that fails to load used to be dropped from all three
+                # tables, leaving no trace in the output. Callers then reported
+                # success over a silently smaller corpus: the ingest CLI prints
+                # "Ingested N bundles" from nrow(runs_df), which counts only
+                # what loaded, and exits 0.
+                #
+                # Record it as an issue row instead. The issues table already
+                # carries a severity column, so this reaches issues_table.csv
+                # through the existing path with no caller change.
+                push!(issues_dfs, DataFrame([Dict{String,Any}(
+                    "bundle_path" => bundle_path,
+                    "issue_category" => "bundle_load_failure",
+                    "tensor" => missing,
+                    "message" => sprint(showerror, e),
+                    "severity" => "load_error",
+                )]))
             end
         end
     end
 
+    if n_failed > 0
+        @warn "grok-ozempic ingest incomplete: $(n_failed) of $(n_found) bundles failed to load; " *
+              "they are recorded in the issues table with severity=\"load_error\""
+    end
+
+    all_issues = isempty(issues_dfs) ?
+        DataFrame(bundle_path=String[], issue_category=String[], tensor=Union{String,Missing}[], message=String[], severity=String[]) :
+        reduce(vcat, issues_dfs; cols=:union)
+
     if isempty(runs_dfs)
-        all_runs = DataFrame(bundle_path=String[], status=String[])
+        # Match the populated schema. This previously returned a 2-column frame
+        # while the populated path returns 13+, so any consumer touching e.g.
+        # runs_df.source_tensor_count threw only on the empty-corpus case — the
+        # one most likely to happen silently (a mistyped input_dir, or a
+        # directory where every bundle failed to load).
+        all_runs = DataFrame(
+            bundle_path = String[],
+            status = String[],
+            source_tensor_count = Union{Int,Missing}[],
+            artifact_tensor_count = Union{Int,Missing}[],
+            router_count = Union{Int,Missing}[],
+            protected_router_violations = Union{Int,Missing}[],
+            protected_norm_violations = Union{Int,Missing}[],
+            expert_association_count = Union{Int,Missing}[],
+            unknown_unresolved_warning_count = Union{Int,Missing}[],
+            checksum_coverage = Union{Float64,Missing}[],
+            source_total_bytes = Union{Int,Missing}[],
+            artifact_total_bytes = Union{Int,Missing}[],
+            byte_accounting_result = Union{String,Missing}[],
+        )
         all_metrics = DataFrame(bundle_path=String[], metric_name=String[], metric_value=Any[], metric_category=String[])
-        all_issues = DataFrame(bundle_path=String[], issue_category=String[], tensor=Union{String,Missing}[], message=String[], severity=String[])
+        # Note: issues may be non-empty even when runs is — a directory where
+        # every bundle failed to load produces load_error rows and no runs.
         return all_runs, all_metrics, all_issues
     end
 
-    return reduce(vcat, runs_dfs; cols=:union), reduce(vcat, metrics_dfs; cols=:union), reduce(vcat, issues_dfs; cols=:union)
+    return reduce(vcat, runs_dfs; cols=:union), reduce(vcat, metrics_dfs; cols=:union), all_issues
 end
 
 export normalize_grok_ozempic_to_tables, normalize_grok_ozempic_dir, normalize_grok_ozempic_bundle_to_tables

@@ -722,4 +722,69 @@ end
     @test "FAIL" in status_vals
     @test nrow(metrics_df) > 0
     @test nrow(issues_df) > 0
+
+    # No load failures in the good fixtures, so nothing should be flagged.
+    @test !("load_error" in Set(issues_df.severity))
+end
+
+@testset "GrokOzempicNormalizer — a corrupt bundle surfaces instead of vanishing" begin
+    # A bundle that fails to load used to be dropped from all three tables with
+    # only an @warn, so the ingest CLI printed "Ingested N bundles" and exited 0
+    # over a silently smaller corpus.
+    mktempdir() do dir
+        good = joinpath(dir, "good")
+        mkpath(good)
+        cp(joinpath(@__DIR__, "fixtures", "grok_ozempic", "pass", "validation.report.json"),
+           joinpath(good, "validation.report.json"))
+
+        bad = joinpath(dir, "bad")
+        mkpath(bad)
+        write(joinpath(bad, "validation.report.json"), "{ this is not valid json")
+
+        runs_df, _, issues_df = normalize_grok_ozempic_dir(dir)
+
+        # The good bundle still ingests.
+        @test nrow(runs_df) == 1
+
+        # The corrupt one is reported rather than dropped.
+        load_errors = filter(:severity => ==("load_error"), issues_df)
+        @test nrow(load_errors) == 1
+        @test load_errors.bundle_path[1] == bad
+        @test load_errors.issue_category[1] == "bundle_load_failure"
+        @test !isempty(load_errors.message[1])
+
+        # The count a caller would report must not silently equal the count found.
+        @test nrow(runs_df) != 2
+    end
+end
+
+@testset "GrokOzempicNormalizer — empty dir returns the populated schema" begin
+    # The empty-corpus frame used to have 2 columns where the populated one has
+    # 13+, so a consumer touching source_tensor_count threw only on the case
+    # most likely to happen silently: a mistyped input_dir.
+    mktempdir() do dir
+        runs_df, metrics_df, issues_df = normalize_grok_ozempic_dir(dir)
+        @test nrow(runs_df) == 0
+        for col in (:bundle_path, :status, :source_tensor_count, :artifact_tensor_count,
+                    :router_count, :checksum_coverage, :byte_accounting_result)
+            @test hasproperty(runs_df, col)
+        end
+        @test nrow(metrics_df) == 0
+        @test nrow(issues_df) == 0
+    end
+end
+
+@testset "GrokOzempicNormalizer — all-bad dir yields issues with no runs" begin
+    # runs may be empty while issues is not, so the empty-runs branch must still
+    # return the collected load_error rows rather than discarding them.
+    mktempdir() do dir
+        bad = joinpath(dir, "bad")
+        mkpath(bad)
+        write(joinpath(bad, "validation.report.json"), "not json at all")
+
+        runs_df, _, issues_df = normalize_grok_ozempic_dir(dir)
+        @test nrow(runs_df) == 0
+        @test nrow(issues_df) == 1
+        @test issues_df.severity[1] == "load_error"
+    end
 end
