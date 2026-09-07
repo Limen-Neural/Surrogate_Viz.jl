@@ -79,10 +79,27 @@ function normalize_grok_ozempic_to_tables(bundle::_grok_bundle_type)::Tuple{Data
     return runs_df, metrics_df, issues_df
 end
 
-function normalize_grok_ozempic_dir(input_dir::AbstractString)::Tuple{DataFrame, DataFrame, DataFrame}
+"""
+    normalize_grok_ozempic_dir(input_dir; strict=false) -> (runs_df, metrics_df, issues_df)
+
+Batch-normalize every grok-ozempic bundle under `input_dir`.
+
+A bundle that fails to load is skipped. Previously that skip left no trace
+beyond a single `@warn` per bundle, so a caller comparing "bundles on disk" to
+"rows returned" had no way to tell a partial ingest from a complete one — the
+returned tables look the same either way. A summary is now always emitted when
+anything failed, naming the count and the paths.
+
+Pass `strict=true` to turn any load failure into an error instead. Use it
+wherever a silently short table would be worse than a loud stop, such as an
+ingest whose output is published.
+"""
+function normalize_grok_ozempic_dir(input_dir::AbstractString; strict::Bool=false)::Tuple{DataFrame, DataFrame, DataFrame}
     runs_dfs = DataFrame[]
     metrics_dfs = DataFrame[]
     issues_dfs = DataFrame[]
+    failed_paths = String[]
+    found = 0
 
     if !isdir(input_dir)
         error("Input directory not found: $(input_dir)")
@@ -91,15 +108,25 @@ function normalize_grok_ozempic_dir(input_dir::AbstractString)::Tuple{DataFrame,
     for (root, dirs, files) in walkdir(input_dir)
         if "validation.report.json" in files
             bundle_path = root
+            found += 1
             try
                 runs_df, metrics_df, issues_df = normalize_grok_ozempic_bundle_to_tables(bundle_path)
                 push!(runs_dfs, runs_df)
                 push!(metrics_dfs, metrics_df)
                 push!(issues_dfs, issues_df)
             catch e
+                push!(failed_paths, bundle_path)
                 @warn "Failed to load grok-ozempic bundle at $(bundle_path): $(e)"
             end
         end
+    end
+
+    if !isempty(failed_paths)
+        summary = "normalize_grok_ozempic_dir: $(length(failed_paths)) of $(found) bundle(s) under " *
+                  "$(input_dir) failed to load and were skipped:\n  " *
+                  join(failed_paths, "\n  ")
+        strict && error(summary * "\n(strict=true)")
+        @warn summary
     end
 
     if isempty(runs_dfs)

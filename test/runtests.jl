@@ -723,3 +723,55 @@ end
     @test nrow(metrics_df) > 0
     @test nrow(issues_df) > 0
 end
+
+@testset "GrokOzempicNormalizer — load failures are reported, not swallowed" begin
+    # A bundle that fails to load is skipped. The returned tables look
+    # identical whether that happened or not, so the caller has no way to
+    # distinguish a partial ingest from a complete one unless it is announced.
+    #
+    # Built in a tempdir rather than adding a broken fixture to
+    # test/fixtures/grok_ozempic/, which the smoke test above counts.
+    mktempdir() do dir
+        good = joinpath(dir, "good")
+        mkpath(good)
+        cp(joinpath(@__DIR__, "fixtures", "grok_ozempic", "pass", "validation.report.json"),
+           joinpath(good, "validation.report.json"))
+
+        broken = joinpath(dir, "broken")
+        mkpath(broken)
+        write(joinpath(broken, "validation.report.json"), "{ this is not valid json")
+
+        # Non-strict: the good bundle still loads, and the skip is announced
+        # with a count naming how many of how many failed.
+        local runs_df
+        @test_logs (:warn,) match_mode = :any begin
+            runs_df, _, _ = normalize_grok_ozempic_dir(dir)
+        end
+        @test nrow(runs_df) == 1          # the good bundle survived
+        @test !isempty(runs_df.bundle_path)
+
+        # strict=true refuses to return a short table at all.
+        @test_throws ErrorException normalize_grok_ozempic_dir(dir; strict = true)
+
+        # The error names the failing path, so it is actionable.
+        err = try
+            normalize_grok_ozempic_dir(dir; strict = true)
+            nothing
+        catch e
+            sprint(showerror, e)
+        end
+        @test err !== nothing
+        @test occursin("broken", err)
+        @test occursin("1 of 2", err)
+    end
+
+    # A directory with no failures must not warn about failures at all.
+    mktempdir() do dir
+        good = joinpath(dir, "good")
+        mkpath(good)
+        cp(joinpath(@__DIR__, "fixtures", "grok_ozempic", "pass", "validation.report.json"),
+           joinpath(good, "validation.report.json"))
+        runs_df, _, _ = normalize_grok_ozempic_dir(dir; strict = true)
+        @test nrow(runs_df) == 1
+    end
+end
