@@ -17,15 +17,20 @@ using Pkg
 const REPO_ROOT = normpath(joinpath(@__DIR__, ".."))
 
 """
-    smoke_include(relpath) -> Module
+    smoke_include(relpath) -> (Module, before, after)
 
-Load `relpath` (relative to the repo root) into a fresh anonymous module and
-return it. Restores the caller's active project afterwards.
+Load `relpath` (relative to the repo root) into a fresh anonymous module.
+
+Returns the sandbox module, the active project before the include, and the
+active project observed *immediately after* it. The caller compares those two
+to detect a load-time `Pkg.activate`; the `finally` block below repairs the
+damage, so checking after cleanup would always pass and prove nothing.
 """
 function smoke_include(relpath::AbstractString)
     path = joinpath(REPO_ROOT, relpath)
     isfile(path) || error("smoke_include: no such script $(path)")
     before = Base.active_project()
+    after = nothing
     sandbox = Module(Symbol("SmokeSandbox_", replace(relpath, r"[^A-Za-z0-9]" => "_")))
     # A module built at runtime has no `include` of its own — that is normally
     # created by the lowering of a `module ... end` block. Scripts that pull in
@@ -33,14 +38,17 @@ function smoke_include(relpath::AbstractString)
     Core.eval(sandbox, :(include(p) = Base.include(@__MODULE__, p)))
     try
         Base.include(sandbox, path)
+        after = Base.active_project()
     finally
         # A script that calls Pkg.activate at load time would otherwise leave
-        # the rest of the suite pointed at the wrong project.
-        if before !== nothing && Base.active_project() != before
+        # the rest of the suite pointed at the wrong project. active_project()
+        # resolves through LOAD_PATH and always yields a path, so there is no
+        # `nothing` case to guard.
+        if Base.active_project() != before
             Pkg.activate(before; io = devnull)
         end
     end
-    return sandbox
+    return sandbox, before, after
 end
 
 @testset "root scripts load without executing main()" begin
@@ -53,7 +61,7 @@ end
             # Assign outside @test so a load failure surfaces as one error on
             # this line, not as a cascade of `m not defined` on every assertion
             # below it.
-            m = smoke_include(script)
+            m, before, after = smoke_include(script)
             @test m isa Module
 
             # main() must be *defined* but not to have run. If it had run, the
@@ -61,8 +69,17 @@ end
             @test isdefined(m, :main)
             @test getfield(m, :main) isa Function
 
-            # The active project survived the include.
-            @test Base.active_project() !== nothing
+            # Loading must not have switched the active project. Compared at
+            # the moment of the include, before cleanup could mask it.
+            @test after == before
+
+            # Any Surrogate_Viz binding the script sets up must resolve inside
+            # the sandbox, not via Main. Reading it from Main appears to work
+            # only because runtests.jl has already done `using Surrogate_Viz`.
+            if isdefined(m, :SV)
+                @test isdefined(m, :Surrogate_Viz)
+                @test getfield(m, :SV) === getfield(m, :Surrogate_Viz)
+            end
         end
     end
 end
@@ -78,7 +95,11 @@ end
         "plot_latent_space.jl",
     )
         src = read(joinpath(REPO_ROOT, script), String)
-        @test occursin("abspath(PROGRAM_FILE) == @__FILE__", src)
+        # Line-anchored: a bare substring match would also be satisfied by the
+        # guard appearing only in a comment or string literal, so a half-removed
+        # guard would still pass. This cannot prove the guard wraps main() —
+        # the load test above covers that direction.
+        @test occursin(r"(?m)^\s*if abspath\(PROGRAM_FILE\) == @__FILE__", src)
     end
 end
 

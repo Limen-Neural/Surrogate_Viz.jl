@@ -22,7 +22,10 @@ using DataFrames
 using TOML
 import SymbolicRegression
 include(joinpath(@__DIR__, "src", "Surrogate_Viz.jl"))
-const SV = getfield(Main, :Surrogate_Viz)
+# Resolve from the including module, not Main: the include above defines
+# Surrogate_Viz *here*, so reading it from Main only works when Main happens to
+# have it too. That made this script unloadable in an isolated module.
+const SV = getfield(@__MODULE__, :Surrogate_Viz)
 
 const REPO_ROOT = @__DIR__
 const SELECTED_RUNS_PATH = joinpath(REPO_ROOT, "data", "selected_runs.toml")
