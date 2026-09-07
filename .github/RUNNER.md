@@ -32,7 +32,7 @@ only job whose result can be trusted as a gate on external contributions.
 |---|---|
 | Name | `Surrogate-Viz-sm120` |
 | Labels | `self-hosted, Linux, X64, GPU, docker, julia-cuda, sm120` |
-| Mode | persistent (**not** ephemeral — see below) |
+| Mode | persistent — ephemeral is **off**, and should stay off unless a supervisor is running (see below) |
 | Supervision | systemd **user** service, `github-runner-surrogate-viz` |
 | Working dir | `~/actions-runner/Surrogate_Viz.jl-runner` |
 
@@ -55,15 +55,52 @@ interactive password prompt on every runner operation or a `NOPASSWD` sudoers
 rule. Given the shared-host exposure described below, granting passwordless root
 to the account that executes CI jobs is not a trade worth making.
 
-### Do not re-enable ephemeral mode without a supervisor
+### Ephemeral mode is off, and two leftovers can silently switch it back on
+
+**Current state — ephemeral is not in use.** Verified three ways:
+
+| Source | Value |
+|---|---|
+| `.runner` (note: UTF-8 BOM, read with `utf-8-sig`) | `ephemeral` key absent |
+| `gh api …/actions/runners` | `ephemeral` absent / false |
+| live unit `ExecStart` | `…/Surrogate_Viz.jl-runner/run.sh` |
+
+**But the machinery to re-enable it by accident is still on disk.** Two
+leftovers from the previous configuration sit in the runner directory:
+
+- `run-ephemeral.sh` — a loop that, after every job, deletes `.runner`,
+  `.credentials` and `.credentials_rsaparams` and re-registers with
+  `--ephemeral`.
+- `github-runner.service` — a *system* unit template whose `ExecStart` points at
+  that script.
+
+So `sudo ./svc.sh install`, or installing that template by hand, would do two
+harmful things at once: silently restore ephemeral mode, and start a second
+supervisor competing with the user service that is already running. Neither is
+obvious from the command you typed.
+
+**If you are not going to use ephemeral mode, delete both.** They are not
+referenced by anything live:
+
+```bash
+cd ~/actions-runner/Surrogate_Viz.jl-runner
+rm -f run-ephemeral.sh github-runner.service
+```
+
+### Why ephemeral was abandoned
 
 The registration was previously created with `--ephemeral`. An ephemeral runner
-accepts one job and then de-registers itself; `run-ephemeral.sh` exists to
+accepts one job and then de-registers itself; `run-ephemeral.sh` existed to
 re-register in a loop, but nothing kept it alive. The result was that after its
 last job the runner silently vanished from GitHub while the local `.runner` file
 still claimed it was configured — so `config.sh` refused with "already
 configured" *and* `config.sh remove` demanded a removal token it could no longer
 validate.
+
+Ephemeral mode is worth revisiting only alongside a supervisor that is actually
+running, because a clean workspace per job would genuinely narrow the
+shared-host exposure described below. It is the supervision, not the mode, that
+was missing.
 
 If that state recurs, `--local` is the escape:
 
