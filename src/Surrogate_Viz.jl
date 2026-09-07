@@ -232,6 +232,48 @@ function _status_from_validation(v::Union{Nothing,String}, error::Union{Nothing,
     end
 end
 
+"""
+    telemetry_provenance(telemetry_source) -> String
+
+Classify where a run's telemetry actually came from.
+
+This answers a different question from [`RunStatus`](@ref). `run_status` is
+derived from `validation_status` and says whether the run *completed*;
+provenance says whether the numbers are measured or fabricated. A run can
+easily be `completed` (so `run_status == real`) while its telemetry was
+synthesised, and treating the first as evidence of the second is how synthetic
+values end up presented as measurements.
+
+corinth-canal stamps `telemetry_source` as one of:
+
+  - `csv_<stem>`         — measured telemetry read from that CSV
+  - `synthetic`          — deliberately synthesised
+  - `synthetic_fallback` — real telemetry was requested but unavailable, so the
+                           producer fell back to synthesising it
+
+Returns `"measured"`, `"synthetic"`, `"synthetic_fallback"`, or `"unknown"`.
+Anything unrecognised is `"unknown"` rather than being assumed measured — an
+unfamiliar value is not evidence of real data.
+"""
+function telemetry_provenance(telemetry_source::Union{Nothing,AbstractString})::String
+    telemetry_source === nothing && return "unknown"
+    s = String(telemetry_source)
+    isempty(s) && return "unknown"
+    s == "synthetic" && return "synthetic"
+    s == "synthetic_fallback" && return "synthetic_fallback"
+    startswith(s, "csv_") && return "measured"
+    return "unknown"
+end
+
+"""
+    is_measured_telemetry(telemetry_source) -> Bool
+
+True only when the telemetry is measured. Synthetic, fallback-synthetic and
+unrecognised sources are all false.
+"""
+is_measured_telemetry(telemetry_source::Union{Nothing,AbstractString}) =
+    telemetry_provenance(telemetry_source) == "measured"
+
 function load_saaq_bundle(path::AbstractString)::SaaqBundle
     manifest_path = joinpath(path, "run_manifest.json")
     summary_path = joinpath(path, "summary.json")
@@ -350,6 +392,7 @@ export validate_path_component, IMPORT_ROOT
 export RunStatus, RunManifest, RunMetrics, RunWarning, SaaqBundle
 export real, synthetic, skipped, failed
 export load_saaq_bundle, validate_saaq_bundle
+export telemetry_provenance, is_measured_telemetry
 export normalize_bundle_to_tables, normalize_bundles_dir, normalize_saaq_bundle_to_tables
 export ComputeBackend, CPUBackend, CUDABackend, has_cuda, compute_delta_per_tick
 export GrokOzempicFailure, GrokOzempicWarning, GrokOzempicReport, GrokOzempicBundle

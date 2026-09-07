@@ -1,0 +1,9 @@
+{
+  "run_id": "synthetic_fallback_run",
+  "model_slug": "test-llama-3.2-1b",
+  "model_family": "Llama3.2",
+  "validation_status": "completed",
+  "telemetry_source": "synthetic_fallback",
+  "saaq_rule": "SaaqV1_5SqrtRate",
+  "run_dir": "artifacts/issue-40-local/test-llama-3.2-1b/csv_re4_path_tracing_telemetry/test_missing_optional_20260528T120003"
+}

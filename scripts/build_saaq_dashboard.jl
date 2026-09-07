@@ -112,6 +112,13 @@ function build_dashboard_html(runs_df, metrics_df, warnings_df; date_label, heat
     .badge-synthetic { background: #e8edff; color: #4c56b8; }
     .badge-skipped  { background: #fff8c5; color: #9a6700; }
     .badge-failed   { background: #ffebe9; color: #cf222e; }
+    /* Telemetry provenance — deliberately distinct from the run_status badges
+       above, because they answer different questions. Fabricated telemetry is
+       styled to be hard to miss next to a green "real" run status. */
+    .prov-measured           { background: #dafbe1; color: #1a7f37; }
+    .prov-synthetic          { background: #fff1e5; color: #bc4c00; }
+    .prov-synthetic_fallback { background: #ffebe9; color: #cf222e; border: 1px solid #cf222e; }
+    .prov-unknown            { background: #eaeef2; color: #57606a; }
     .summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
     .card { background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 14px 16px; }
     .card-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #888; margin-bottom: 4px; }
@@ -144,6 +151,18 @@ function build_dashboard_html(runs_df, metrics_df, warnings_df; date_label, heat
     n_failed = count(isequal("failed"), runs_df.run_status)
     n_warnings = nrow(warnings_df)
 
+    # Telemetry provenance is a *different axis* from run_status. run_status
+    # says the run completed; provenance says whether its numbers were measured
+    # or synthesised. A run can be `completed` (run_status == real) with
+    # `telemetry_source == synthetic_fallback`, and reporting only run_status
+    # presents fabricated telemetry as measurement.
+    provenance = hasproperty(runs_df, :telemetry_provenance) ?
+        string.(runs_df.telemetry_provenance) :
+        fill("unknown", n_runs)
+    n_measured = count(isequal("measured"), provenance)
+    n_fabricated = count(p -> p in ("synthetic", "synthetic_fallback"), provenance)
+    n_fallback = count(isequal("synthetic_fallback"), provenance)
+
     write(buf, """
     <div class="summary-cards">
       <div class="card">
@@ -160,6 +179,11 @@ function build_dashboard_html(runs_df, metrics_df, warnings_df; date_label, heat
         <div class="card-label">Synthetic</div>
         <div class="card-value" style="color:#4c56b8">$(n_synth)</div>
         <div class="card-sub">fixture runs</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Measured Telemetry</div>
+        <div class="card-value" style="color:#1a7f37">$(n_measured)</div>
+        <div class="card-sub">of $(n_runs) &middot; $(n_fabricated) fabricated$(n_fallback > 0 ? " (" * string(n_fallback) * " fallback)" : "")</div>
       </div>
       <div class="card">
         <div class="card-label">Skipped</div>
@@ -215,7 +239,16 @@ function build_dashboard_html(runs_df, metrics_df, warnings_df; date_label, heat
         write(buf, "<td><span class='badge $(status_class)'>$(status)</span></td>")
         write(buf, "<td>$(fmt_val(row.model_family))</td>")
         write(buf, "<td><code>$(fmt_val(row.saaq_formula_version))</code></td>")
-        write(buf, "<td><code>$(fmt_val(row.telemetry_source))</code></td>")
+        # Mark the telemetry source with its provenance. A bare `csv_*` string
+        # tells a reader nothing about whether the producer actually found that
+        # CSV or silently fell back to synthesising the data.
+        prov = hasproperty(row, :telemetry_provenance) ?
+            string(row.telemetry_provenance) : "unknown"
+        prov_label = prov == "measured" ? "measured" :
+                     prov == "synthetic" ? "SYNTHETIC" :
+                     prov == "synthetic_fallback" ? "SYNTHETIC FALLBACK" : "UNVERIFIED"
+        write(buf, "<td><code>$(fmt_val(row.telemetry_source))</code> ")
+        write(buf, "<span class='badge prov-$(prov)'>$(prov_label)</span></td>")
         write(buf, "<td class='col-repeat'>$(fmt_val(row.repeat_idx)) / $(fmt_val(row.repeat_count))</td>")
         write(buf, "<td class='col-ticks'>$(fmt_val(row.ticks_effective))</td>")
         write(buf, "<td class='col-metrics'>$(n_run_metrics)</td>")
