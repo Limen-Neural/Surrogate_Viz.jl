@@ -1,11 +1,21 @@
 using Pkg
-Pkg.activate(@__DIR__)
+
+# Only take over the active project when run as a script. Activating at load
+# time would switch the caller's project out from under them when this file is
+# `include`d — which is required to unit-test no_match_report below.
+if abspath(PROGRAM_FILE) == @__FILE__
+    Pkg.activate(@__DIR__)
+end
 
 using CSV
 using DataFrames
 using TOML
 include(joinpath(@__DIR__, "src", "Surrogate_Viz.jl"))
-const SV = getfield(Main, :Surrogate_Viz)
+# Resolve from the including module, not Main. The include above defines
+# Surrogate_Viz *here*, so reading it from Main only works when Main happens to
+# have it too — which makes this file unloadable in an isolated module. Same
+# fix as #52 applied to SAAQ_latent_discovery.jl.
+const SV = getfield(@__MODULE__, :Surrogate_Viz)
 
 ENV["GKSwstype"] = get(ENV, "GKSwstype", "100")
 ENV["QT_QPA_PLATFORM"] = get(ENV, "QT_QPA_PLATFORM", "offscreen")
@@ -87,17 +97,36 @@ function no_match_report(runs::AbstractVector, repeat_idx::Int)
 
     push!(lines, "  Blocking criteria: $(isempty(blockers) ? "none individually — no single run satisfies all at once" : join(blockers, ", "))")
 
-    # Only draw the legacy-schema conclusion when the evidence supports it,
-    # rather than asserting it for every failure.
+    # The counts above are per-criterion and independent, and independence says
+    # nothing about the conjunction: `model` can match one run while `rule`
+    # matches a different one, with no single run satisfying both. So before
+    # claiming the manifest is "otherwise compatible", evaluate the conjunction
+    # of every criterion except repeat_idx against actual runs.
+    others = [pred for (label, _, pred) in checks if label != "repeat_idx"]
+    satisfying_others = filter(r -> all(p -> p(r), others), runs)
+
     if "campaign" in blockers && "model" in blockers
         push!(lines,
             "  This looks like the heartbeat-era schema mismatch: the manifest has no " *
             "matching campaign or model. That combination is what current sviz_* data " *
             "produces, and this script is for historical paired runs only.")
-    elseif blockers == ["repeat_idx"]
+    elseif blockers == ["repeat_idx"] && !isempty(satisfying_others)
+        # Safe to blame repeat_idx only now that runs are known to satisfy
+        # everything else. Report the repeat values on *those* runs rather than
+        # globally — a repeat that appears only on non-matching runs is not a
+        # usable suggestion.
+        available = sort(unique(Int(r["repeat_idx"]) for r in satisfying_others if haskey(r, "repeat_idx")))
         push!(lines,
-            "  Only repeat_idx blocked. The manifest is otherwise compatible — " *
-            "try a repeat index that exists (see observed values above).")
+            "  Only repeat_idx blocked, and $(length(satisfying_others)) run(s) satisfy every " *
+            "other criterion. Available repeat_idx among those runs: " *
+            "$(isempty(available) ? "none (they carry no repeat_idx key)" : string(available)).")
+    elseif isempty(satisfying_others)
+        # Covers the case where repeat_idx looks like the lone blocker but the
+        # remaining criteria are only individually satisfiable.
+        push!(lines,
+            "  No single run satisfies the other criteria together, so the counts above " *
+            "are individually satisfiable but jointly unsatisfiable — changing repeat_idx " *
+            "alone will not help.")
     end
 
     return join(lines, "\n")
@@ -262,4 +291,6 @@ function main()
     println("Saved markdown report to $(REPORT_PATH)")
 end
 
-main()
+if abspath(PROGRAM_FILE) == @__FILE__
+    main()
+end
