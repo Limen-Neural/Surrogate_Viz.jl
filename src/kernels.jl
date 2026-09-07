@@ -143,24 +143,48 @@ function _plain_walker_histogram(best_walkers::AbstractVector{Int}, n_bins::Int,
     return hist
 end
 
+"""
+    _walker_histogram_dispatch(best_walkers, n_bins, max_walker) -> Vector{Int}
+
+Choose the GPU or CPU walker-density histogram and say so when the GPU path is
+skipped.
+
+The two public entry points below previously had their own copies of this
+selection logic and disagreed about it: `walker_density_bins_and_counts` fell
+back to the CPU silently, while every other backend dispatcher in this file
+warns, and `cuda_best_walker_density_histogram` warned with text that was wrong
+in one of its two fallback cases. Both now route through here so the behaviour
+cannot drift apart again.
+
+The two reasons for falling back are reported distinctly, because they call for
+different action: "CUDA is not functional" is a host or driver problem, while
+"the extension is not loaded" just means nothing has run `using CUDA` in this
+session and the GPU is probably fine.
+"""
+function _walker_histogram_dispatch(best_walkers::AbstractVector{Int}, n_bins::Int, max_walker::Int)
+    if !has_cuda()
+        @warn "CUDA is not functional; using CPU fallback for the walker density histogram" maxlog = 1
+        return _plain_walker_histogram(best_walkers, n_bins, max_walker)
+    end
+
+    # Prefer the CUDA version only when the package extension is actually attached.
+    # Use Base.invokelatest to avoid world-age issues when the extension is loaded
+    # dynamically (e.g., first call in a fresh process).
+    ext = Base.get_extension(@__MODULE__, :CUDABackendExt)
+    if ext === nothing
+        @warn "CUDA is functional but the CUDABackendExt extension is not loaded; using CPU fallback for the walker density histogram. Run `using CUDA` to enable the GPU path." maxlog = 1
+        return _plain_walker_histogram(best_walkers, n_bins, max_walker)
+    end
+
+    return Base.invokelatest(ext._cuda_best_walker_density_histogram, best_walkers; n_bins=n_bins, max_walker=max_walker)
+end
+
 function walker_density_bins_and_counts(
     best_walkers::AbstractVector{Int};
     n_bins::Int = 32,
     max_walker::Int = 2047
 )
-    # Prefer the CUDA version only when the package extension is actually attached.
-    # Use Base.invokelatest to avoid world-age issues when the extension is loaded
-    # dynamically (e.g., first call in a fresh process).
-    if has_cuda()
-        ext = Base.get_extension(@__MODULE__, :CUDABackendExt)
-        if ext !== nothing
-            counts = Base.invokelatest(ext._cuda_best_walker_density_histogram, best_walkers; n_bins=n_bins, max_walker=max_walker)
-        else
-            counts = _plain_walker_histogram(best_walkers, n_bins, max_walker)
-        end
-    else
-        counts = _plain_walker_histogram(best_walkers, n_bins, max_walker)
-    end
+    counts = _walker_histogram_dispatch(best_walkers, n_bins, max_walker)
     edges = range(0, max_walker, length = n_bins + 1)
     return collect(edges), counts
 end
@@ -183,12 +207,5 @@ function cuda_best_walker_density_histogram(
     n_bins::Int = 32,
     max_walker::Int = 2047
 )
-    if has_cuda()
-        ext = Base.get_extension(@__MODULE__, :CUDABackendExt)
-        if ext !== nothing
-            return Base.invokelatest(ext._cuda_best_walker_density_histogram, best_walkers; n_bins=n_bins, max_walker=max_walker)
-        end
-    end
-    @warn "CUDA not available; using CPU fallback for walker density histogram"
-    return _plain_walker_histogram(best_walkers, n_bins, max_walker)
+    return _walker_histogram_dispatch(best_walkers, n_bins, max_walker)
 end
