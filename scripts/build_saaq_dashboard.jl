@@ -162,6 +162,12 @@ function build_dashboard_html(runs_df, metrics_df, warnings_df; date_label, heat
     n_measured = count(isequal("measured"), provenance)
     n_fabricated = count(p -> p in ("synthetic", "synthetic_fallback"), provenance)
     n_fallback = count(isequal("synthetic_fallback"), provenance)
+    # Runs whose telemetry_source is absent or unrecognised. Counted and shown
+    # explicitly: measured + fabricated + unverified must reconcile to the run
+    # total, or a legacy/unfamiliar source would vanish from the breakdown and
+    # the "of N" denominator would silently overstate what was accounted for.
+    n_unverified = count(isequal("unknown"), provenance)
+    @assert n_measured + n_fabricated + n_unverified == n_runs
 
     write(buf, """
     <div class="summary-cards">
@@ -183,7 +189,7 @@ function build_dashboard_html(runs_df, metrics_df, warnings_df; date_label, heat
       <div class="card">
         <div class="card-label">Measured Telemetry</div>
         <div class="card-value" style="color:#1a7f37">$(n_measured)</div>
-        <div class="card-sub">of $(n_runs) &middot; $(n_fabricated) fabricated$(n_fallback > 0 ? " (" * string(n_fallback) * " fallback)" : "")</div>
+        <div class="card-sub">of $(n_runs) &middot; $(n_fabricated) fabricated$(n_fallback > 0 ? " (" * string(n_fallback) * " fallback)" : "")$(n_unverified > 0 ? " &middot; " * string(n_unverified) * " unverified" : "")</div>
       </div>
       <div class="card">
         <div class="card-label">Skipped</div>
@@ -247,8 +253,13 @@ function build_dashboard_html(runs_df, metrics_df, warnings_df; date_label, heat
         prov_label = prov == "measured" ? "measured" :
                      prov == "synthetic" ? "SYNTHETIC" :
                      prov == "synthetic_fallback" ? "SYNTHETIC FALLBACK" : "UNVERIFIED"
-        write(buf, "<td><code>$(fmt_val(row.telemetry_source))</code> ")
-        write(buf, "<span class='badge prov-$(prov)'>$(prov_label)</span></td>")
+        # html_escape: telemetry_source comes from an upstream manifest, so it
+        # is untrusted input to this generated page. fmt_val does not escape.
+        # `prov` is escaped too since it reaches a class attribute; it is drawn
+        # from a fixed set today, but escaping costs nothing and keeps the
+        # attribute safe if the classifier ever passes a value through.
+        write(buf, "<td><code>$(html_escape(fmt_val(row.telemetry_source)))</code> ")
+        write(buf, "<span class='badge prov-$(html_escape(prov))'>$(html_escape(prov_label))</span></td>")
         write(buf, "<td class='col-repeat'>$(fmt_val(row.repeat_idx)) / $(fmt_val(row.repeat_count))</td>")
         write(buf, "<td class='col-ticks'>$(fmt_val(row.ticks_effective))</td>")
         write(buf, "<td class='col-metrics'>$(n_run_metrics)</td>")
