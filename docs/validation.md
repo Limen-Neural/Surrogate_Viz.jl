@@ -116,8 +116,14 @@ julia --project=. scripts/ingest_grok_ozempic_bundles.jl test/fixtures/grok_ozem
 - **corinth-canal is not yet ready.** All SAAQ bundles come from synthetic fixtures
   under `test/fixtures/bundles/`. Real corinth-canal integration will be documented
   once the pipeline is live.
-- `warnings.jsonl` is defined in the corinth-canal schema but not currently emitted.
-  The warning table will always be empty until corinth-canal starts writing that file.
+- `warnings.jsonl` is defined in the corinth-canal schema but not currently emitted,
+  so no bundle contributes per-run warning rows yet.
+- The warning table is **not** always empty, however: a bundle that fails to load is
+  recorded there with `warning_category = "bundle_load_failure"`,
+  `severity = "load_error"`, and the offending `bundle_path`. Such a bundle has no
+  `run_id` — reading it is what failed — so that column is blank on those rows.
+  Check for `severity == "load_error"` before treating an ingest as complete: the
+  ingest CLIs report the number of bundles that *loaded*, not the number found.
 - `artifacts.json` is defined in the schema but not emitted. Artifact references
   are not yet supported in this ingestion layer.
 - Unknown manifest and metrics fields are preserved in the `extra` dict on each struct

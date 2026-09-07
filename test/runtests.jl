@@ -723,3 +723,58 @@ end
     @test nrow(metrics_df) > 0
     @test nrow(issues_df) > 0
 end
+
+@testset "SaaqNormalizer — a corrupt bundle surfaces instead of vanishing" begin
+    # A bundle that fails to load used to be dropped from all three tables with
+    # only an @warn, so the ingest CLI printed "Ingested N runs" and exited 0
+    # over a silently smaller corpus.
+    mktempdir() do dir
+        good = joinpath(dir, "good")
+        mkpath(good)
+        for f in ("run_manifest.json", "summary.json")
+            cp(joinpath(@__DIR__, "fixtures", "bundles", "successful_synthetic", f),
+               joinpath(good, f))
+        end
+
+        bad = joinpath(dir, "bad")
+        mkpath(bad)
+        write(joinpath(bad, "run_manifest.json"), "{ not valid json")
+
+        runs_df, _, warnings_df = normalize_bundles_dir(dir)
+
+        # The good bundle still ingests.
+        @test nrow(runs_df) == 1
+
+        # The corrupt one is reported rather than dropped. This is the assertion
+        # that would fail if the failure rows were appended before the semijoin
+        # on run_id — a load failure has no run, so the join would filter it out.
+        @test hasproperty(warnings_df, :severity)
+        load_errors = filter(:severity => ==("load_error"), warnings_df)
+        @test nrow(load_errors) == 1
+        @test load_errors.bundle_path[1] == bad
+        @test load_errors.warning_category[1] == "bundle_load_failure"
+        @test !isempty(load_errors.warning_message[1])
+    end
+end
+
+@testset "SaaqNormalizer — all-bad dir yields warnings with no runs" begin
+    # runs may be empty while warnings is not, so the empty-runs branch must
+    # still return the collected load_error rows rather than discarding them.
+    mktempdir() do dir
+        bad = joinpath(dir, "bad")
+        mkpath(bad)
+        write(joinpath(bad, "run_manifest.json"), "not json at all")
+
+        runs_df, _, warnings_df = normalize_bundles_dir(dir)
+        @test nrow(runs_df) == 0
+        @test nrow(warnings_df) == 1
+        @test warnings_df.severity[1] == "load_error"
+        @test warnings_df.bundle_path[1] == bad
+    end
+end
+
+@testset "SaaqNormalizer — clean fixtures report no load failures" begin
+    # Guards against the load_error assertions above passing vacuously.
+    _, _, warnings_df = normalize_bundles_dir(joinpath(@__DIR__, "fixtures", "bundles"))
+    @test nrow(warnings_df) == 0
+end

@@ -126,17 +126,31 @@ function normalize_bundle_to_tables(bundle::_saaq_bundle_type)::Tuple{DataFrame,
 end
 
 """
+    LOAD_FAILURE_CATEGORY
+
+`warning_category` for a bundle that could not be read at all, as distinct from
+a bundle that loaded and reported warnings about itself.
+"""
+const LOAD_FAILURE_CATEGORY = "bundle_load_failure"
+
+"""
     normalize_bundles_dir(input_dir::AbstractString) -> (DataFrame, DataFrame, DataFrame)
 
 Batch-normalize all bundles under `input_dir` into unified DataFrames.
 
 Deduplicates by `run_id`: if the same run_id appears in multiple bundles,
 only the last-loaded bundle's data is retained.
+
+A bundle that fails to load is recorded in the warnings table with
+`warning_category = "bundle_load_failure"` and `severity = "load_error"`,
+carrying its `bundle_path`. It previously vanished from all three tables after
+a `@warn`, so callers reported success over a silently smaller corpus.
 """
 function normalize_bundles_dir(input_dir::AbstractString)::Tuple{DataFrame, DataFrame, DataFrame}
     runs_dfs = DataFrame[]
     metrics_dfs = DataFrame[]
     warnings_dfs = DataFrame[]
+    load_failures = Dict{String,Any}[]
     bundle_seq = 0
 
     if !isdir(input_dir)
@@ -158,14 +172,35 @@ function normalize_bundles_dir(input_dir::AbstractString)::Tuple{DataFrame, Data
                 push!(warnings_dfs, warnings_df)
             catch e
                 @warn "Failed to load bundle at $(bundle_path): $(e)"
+                # A bundle that fails to load used to be dropped from all three
+                # tables, leaving only a line on stderr. Callers then reported
+                # success over a silently smaller corpus — the ingest CLI prints
+                # "Ingested N runs" from nrow(runs_df), which counts only what
+                # loaded, and exits 0.
+                push!(load_failures, Dict{String,Any}(
+                    # A bundle that failed to load has no run_id — reading it is
+                    # what failed. bundle_path is the only identifier available.
+                    "run_id" => "",
+                    "bundle_path" => bundle_path,
+                    "warning_category" => LOAD_FAILURE_CATEGORY,
+                    "warning_message" => sprint(showerror, e),
+                    "tensor_name" => missing,
+                    "severity" => "load_error",
+                ))
             end
         end
     end
+
+    failures_df = isempty(load_failures) ? nothing : DataFrame(load_failures)
 
     if isempty(runs_dfs)
         all_runs = DataFrame(run_id=String[], run_status=String[])
         all_metrics = DataFrame(run_id=String[], metric_name=String[], metric_value=Any[], metric_category=String[])
         all_warnings = DataFrame(run_id=String[], warning_category=String[], warning_message=String[], tensor_name=Union{String,Missing}[], severity=String[])
+        # runs can be empty while failures are not — a directory where every
+        # bundle failed to load. Returning bare empty frames here would make
+        # that indistinguishable from an empty directory.
+        failures_df === nothing || (all_warnings = vcat(all_warnings, failures_df; cols=:union))
         return all_runs, all_metrics, all_warnings
     end
 
@@ -183,6 +218,12 @@ function normalize_bundles_dir(input_dir::AbstractString)::Tuple{DataFrame, Data
     select!(all_runs, Not(:_bundle_seq))
     select!(all_metrics, Not(:_bundle_seq))
     select!(all_warnings, Not(:_bundle_seq))
+
+    # Appended only here, after the semijoin above and after _bundle_seq is
+    # dropped. A load-failure row has no corresponding run — that is the whole
+    # point — so the semijoin on run_id would filter it straight back out,
+    # silently reintroducing the bug this is fixing.
+    failures_df === nothing || (all_warnings = vcat(all_warnings, failures_df; cols=:union))
 
     return all_runs, all_metrics, all_warnings
 end
