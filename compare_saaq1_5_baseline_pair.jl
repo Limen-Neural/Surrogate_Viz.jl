@@ -48,9 +48,45 @@ function blessed_pair(runs::AbstractVector, repeat_idx::Int)
         Int(run["repeat_idx"]) == repeat_idx
     end
 
-    off_run = only(filter(run -> run["condition"] == "baseline", blessed_runs))
-    on_run = only(filter(run -> run["condition"] == "treatment", blessed_runs))
-    return off_run, on_run
+    if isempty(blessed_runs)
+        # Report which criteria actually failed. This script targets the old
+        # heartbeat-era schema, so against current sviz_* data every one of
+        # these misses — and `only()` below would report that as a bare
+        # "Collection is empty, must contain exactly 1 element", which says
+        # nothing about why. Its sibling compare_full_lineup_saaq1_5.jl already
+        # names its filter on failure; this now does the same.
+        n = length(runs)
+        present(key) = count(r -> haskey(r, key), runs)
+        values_for(key) = sort(unique(string(get(r, key, "")) for r in runs if haskey(r, key)))
+        error(
+            "compare_saaq1_5_baseline_pair.jl: no blessed runs matched.\n" *
+            "  Manifest      : $(SELECTED_RUNS_PATH) ($(n) runs)\n" *
+            "  Required      : campaign=baseline_csv, model=olmoe_baseline, family=Olmoe,\n" *
+            "                  telemetry_source=csv_re4_path_tracing_telemetry,\n" *
+            "                  rule=SaaqV1_5SqrtRate, repeat_idx=$(repeat_idx)\n" *
+            "  campaign key  : present on $(present("campaign"))/$(n) runs" *
+            (present("campaign") == 0 ? "  <- absent entirely\n" : "; values $(values_for("campaign"))\n") *
+            "  models present: $(values_for("model"))\n" *
+            "  conditions    : $(values_for("condition"))\n" *
+            "This script is for historical heartbeat-era paired runs " *
+            "(condition=baseline/treatment). Current sviz_* runs use prompt-profile " *
+            "conditions and a renamed olmoe slug, so it will not match them.",
+        )
+    end
+
+    off_matches = filter(run -> run["condition"] == "baseline", blessed_runs)
+    on_matches = filter(run -> run["condition"] == "treatment", blessed_runs)
+    length(off_matches) == 1 || error(
+        "compare_saaq1_5_baseline_pair.jl: expected exactly 1 baseline run, found " *
+        "$(length(off_matches)) among $(length(blessed_runs)) blessed runs " *
+        "(repeat_idx=$(repeat_idx)).",
+    )
+    length(on_matches) == 1 || error(
+        "compare_saaq1_5_baseline_pair.jl: expected exactly 1 treatment run, found " *
+        "$(length(on_matches)) among $(length(blessed_runs)) blessed runs " *
+        "(repeat_idx=$(repeat_idx)).",
+    )
+    return only(off_matches), only(on_matches)
 end
 
 function build_plot(off_df::DataFrame, on_df::DataFrame, joined_df::DataFrame, delta_col::Symbol, entropy_col::Union{Nothing,Symbol})
