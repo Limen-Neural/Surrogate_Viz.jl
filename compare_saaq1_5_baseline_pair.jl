@@ -1,11 +1,21 @@
 using Pkg
-Pkg.activate(@__DIR__)
+
+# Only take over the active project when run as a script. Activating at load
+# time would switch the caller's project out from under them when this file is
+# `include`d — which is required to unit-test no_match_report below.
+if abspath(PROGRAM_FILE) == @__FILE__
+    Pkg.activate(@__DIR__)
+end
 
 using CSV
 using DataFrames
 using TOML
 include(joinpath(@__DIR__, "src", "Surrogate_Viz.jl"))
-const SV = getfield(Main, :Surrogate_Viz)
+# Resolve from the including module, not Main. The include above defines
+# Surrogate_Viz *here*, so reading it from Main only works when Main happens to
+# have it too — which makes this file unloadable in an isolated module. Same
+# fix as #52 applied to SAAQ_latent_discovery.jl.
+const SV = getfield(@__MODULE__, :Surrogate_Viz)
 
 ENV["GKSwstype"] = get(ENV, "GKSwstype", "100")
 ENV["QT_QPA_PLATFORM"] = get(ENV, "QT_QPA_PLATFORM", "offscreen")
@@ -37,6 +47,91 @@ function load_selected_runs(path::AbstractString)
     return runs
 end
 
+"""
+    no_match_report(runs, repeat_idx) -> String
+
+Explain why `blessed_pair`'s filter selected nothing.
+
+`only()` would report this as a bare "Collection is empty, must contain exactly
+1 element", which says nothing about the cause. The sibling
+compare_full_lineup_saaq1_5.jl already names its filter on failure.
+
+Every predicate is counted *independently* against the manifest rather than
+being explained by a fixed narrative. Whichever one is actually responsible
+shows `0 match` beside the values that are present, so this stays correct for a
+historical manifest that merely lacks the requested `repeat_idx` — a
+hard-coded "your data uses prompt-profile conditions" explanation would be
+wrong in exactly that case.
+"""
+function no_match_report(runs::AbstractVector, repeat_idx::Int)
+    n = length(runs)
+    observed(key) = sort(unique(string(get(r, key, "<absent>")) for r in runs))
+    matching(pred) = count(pred, runs)
+
+    # (label, required value, predicate) for each conjunct of the filter.
+    checks = [
+        ("blessed",          "true",                          r -> get(r, "blessed", false) == true),
+        ("campaign",         "baseline_csv",                  r -> get(r, "campaign", nothing) == "baseline_csv"),
+        ("model",            "olmoe_baseline",                r -> get(r, "model", nothing) == "olmoe_baseline"),
+        ("family",           "Olmoe",                         r -> get(r, "family", nothing) == "Olmoe"),
+        ("telemetry_source", "csv_re4_path_tracing_telemetry", r -> get(r, "telemetry_source", nothing) == "csv_re4_path_tracing_telemetry"),
+        ("rule",             "SaaqV1_5SqrtRate",              r -> get(r, "rule", nothing) == "SaaqV1_5SqrtRate"),
+        ("repeat_idx",       string(repeat_idx),              r -> haskey(r, "repeat_idx") && Int(r["repeat_idx"]) == repeat_idx),
+    ]
+
+    lines = String[
+        "compare_saaq1_5_baseline_pair.jl: no blessed runs matched.",
+        "  Manifest: $(SELECTED_RUNS_PATH) ($(n) runs)",
+        "  Per-criterion match counts (each counted independently):",
+    ]
+    blockers = String[]
+    for (label, required, pred) in checks
+        hits = matching(pred)
+        hits == 0 && push!(blockers, label)
+        marker = hits == 0 ? "  <- blocks everything" : ""
+        push!(lines, "    $(rpad(label, 17)) == $(rpad(required, 31)) $(lpad(hits, 3)) match$(marker)")
+        if hits == 0
+            push!(lines, "      observed: $(observed(label))")
+        end
+    end
+
+    push!(lines, "  Blocking criteria: $(isempty(blockers) ? "none individually — no single run satisfies all at once" : join(blockers, ", "))")
+
+    # The counts above are per-criterion and independent, and independence says
+    # nothing about the conjunction: `model` can match one run while `rule`
+    # matches a different one, with no single run satisfying both. So before
+    # claiming the manifest is "otherwise compatible", evaluate the conjunction
+    # of every criterion except repeat_idx against actual runs.
+    others = [pred for (label, _, pred) in checks if label != "repeat_idx"]
+    satisfying_others = filter(r -> all(p -> p(r), others), runs)
+
+    if "campaign" in blockers && "model" in blockers
+        push!(lines,
+            "  This looks like the heartbeat-era schema mismatch: the manifest has no " *
+            "matching campaign or model. That combination is what current sviz_* data " *
+            "produces, and this script is for historical paired runs only.")
+    elseif blockers == ["repeat_idx"] && !isempty(satisfying_others)
+        # Safe to blame repeat_idx only now that runs are known to satisfy
+        # everything else. Report the repeat values on *those* runs rather than
+        # globally — a repeat that appears only on non-matching runs is not a
+        # usable suggestion.
+        available = sort(unique(Int(r["repeat_idx"]) for r in satisfying_others if haskey(r, "repeat_idx")))
+        push!(lines,
+            "  Only repeat_idx blocked, and $(length(satisfying_others)) run(s) satisfy every " *
+            "other criterion. Available repeat_idx among those runs: " *
+            "$(isempty(available) ? "none (they carry no repeat_idx key)" : string(available)).")
+    elseif isempty(satisfying_others)
+        # Covers the case where repeat_idx looks like the lone blocker but the
+        # remaining criteria are only individually satisfiable.
+        push!(lines,
+            "  No single run satisfies the other criteria together, so the counts above " *
+            "are individually satisfiable but jointly unsatisfiable — changing repeat_idx " *
+            "alone will not help.")
+    end
+
+    return join(lines, "\n")
+end
+
 function blessed_pair(runs::AbstractVector, repeat_idx::Int)
     blessed_runs = filter(runs) do run
         get(run, "blessed", false) == true &&
@@ -48,9 +143,23 @@ function blessed_pair(runs::AbstractVector, repeat_idx::Int)
         Int(run["repeat_idx"]) == repeat_idx
     end
 
-    off_run = only(filter(run -> run["condition"] == "baseline", blessed_runs))
-    on_run = only(filter(run -> run["condition"] == "treatment", blessed_runs))
-    return off_run, on_run
+    if isempty(blessed_runs)
+        error(no_match_report(runs, repeat_idx))
+    end
+
+    off_matches = filter(run -> run["condition"] == "baseline", blessed_runs)
+    on_matches = filter(run -> run["condition"] == "treatment", blessed_runs)
+    length(off_matches) == 1 || error(
+        "compare_saaq1_5_baseline_pair.jl: expected exactly 1 baseline run, found " *
+        "$(length(off_matches)) among $(length(blessed_runs)) blessed runs " *
+        "(repeat_idx=$(repeat_idx)).",
+    )
+    length(on_matches) == 1 || error(
+        "compare_saaq1_5_baseline_pair.jl: expected exactly 1 treatment run, found " *
+        "$(length(on_matches)) among $(length(blessed_runs)) blessed runs " *
+        "(repeat_idx=$(repeat_idx)).",
+    )
+    return only(off_matches), only(on_matches)
 end
 
 function build_plot(off_df::DataFrame, on_df::DataFrame, joined_df::DataFrame, delta_col::Symbol, entropy_col::Union{Nothing,Symbol})
@@ -182,4 +291,6 @@ function main()
     println("Saved markdown report to $(REPORT_PATH)")
 end
 
-main()
+if abspath(PROGRAM_FILE) == @__FILE__
+    main()
+end
