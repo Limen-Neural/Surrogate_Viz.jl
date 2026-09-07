@@ -35,12 +35,19 @@ jobs:
       github.event_name == 'push' ||
       github.event.pull_request.head.repo.full_name == github.repository
     env:
-      # Resolve packages into a workspace-local depot rather than the runner
+      # Resolve packages into a per-repository depot rather than the runner
       # account's shared ~/.julia. That account hosts several repositories'
       # runners, so a tampered package resolved by any one of them would
       # otherwise persist in the shared depot for every later job on this host.
       # See .github/RUNNER.md for the full trust boundary.
-      JULIA_DEPOT_PATH: ${{ github.workspace }}/.julia_depot
+      #
+      # Deliberately runner.workspace (_work/<repo>), NOT github.workspace
+      # (_work/<repo>/<repo>). actions/checkout defaults to clean: true, which
+      # runs `git clean -ffdx` — and -x deletes ignored files, which a depot
+      # under the checkout would be. Siting it one level up keeps it out of
+      # checkout's reach, so it survives between runs of this repo while
+      # staying isolated from every other repo on the host.
+      JULIA_DEPOT_PATH: ${{ runner.workspace }}/julia_depot
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Instantiate with CUDA
