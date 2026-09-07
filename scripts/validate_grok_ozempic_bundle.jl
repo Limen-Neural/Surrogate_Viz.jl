@@ -4,13 +4,28 @@
 # Exit code 0 = valid, non-zero = invalid.
 
 using Pkg
-Pkg.activate(joinpath(@__DIR__, ".."))
+
+# Only take over the active project when run as a script. Activating at load
+# time would switch the caller's project out from under them if this file is
+# ever `include`d (e.g. by a test).
+if abspath(PROGRAM_FILE) == @__FILE__
+    Pkg.activate(joinpath(@__DIR__, ".."))
+end
 
 import Surrogate_Viz as SV
 
+function usage(io::IO)
+    println(io, "Usage: julia --project=. scripts/validate_grok_ozempic_bundle.jl <bundle_dir>")
+end
+
 function main()
+    if !isempty(ARGS) && ARGS[1] in ("--help", "-h")
+        usage(stdout)
+        exit(0)
+    end
+
     if length(ARGS) < 1
-        println(stderr, "Usage: julia --project=. scripts/validate_grok_ozempic_bundle.jl <bundle_dir>")
+        usage(stderr)
         exit(1)
     end
 
@@ -48,4 +63,6 @@ function main()
     end
 end
 
-main()
+if abspath(PROGRAM_FILE) == @__FILE__
+    main()
+end

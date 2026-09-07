@@ -4,18 +4,33 @@
 # and write normalized CSV tables to the output directory.
 
 using Pkg
-Pkg.activate(joinpath(@__DIR__, ".."))
+
+# Only take over the active project when run as a script. Activating at load
+# time would switch the caller's project out from under them if this file is
+# ever `include`d (e.g. by a test).
+if abspath(PROGRAM_FILE) == @__FILE__
+    Pkg.activate(joinpath(@__DIR__, ".."))
+end
 
 import Surrogate_Viz as SV
 using CSV
 using DataFrames
 
+function usage(io::IO)
+    println(io, "Usage: julia --project=. scripts/ingest_grok_ozempic_bundles.jl <input_dir> <output_dir>")
+    println(io, "")
+    println(io, "  Walks <input_dir> recursively, finds all validation.report.json files,")
+    println(io, "  loads each bundle, and writes normalized CSV tables to <output_dir>/.")
+end
+
 function main()
+    if !isempty(ARGS) && ARGS[1] in ("--help", "-h")
+        usage(stdout)
+        exit(0)
+    end
+
     if length(ARGS) < 2
-        println(stderr, "Usage: julia --project=. scripts/ingest_grok_ozempic_bundles.jl <input_dir> <output_dir>")
-        println(stderr, "")
-        println(stderr, "  Walks <input_dir> recursively, finds all validation.report.json files,")
-        println(stderr, "  loads each bundle, and writes normalized CSV tables to <output_dir>/.")
+        usage(stderr)
         exit(1)
     end
 
@@ -48,4 +63,6 @@ function main()
     println("  issues_table.csv:  $(issues_path)")
 end
 
-main()
+if abspath(PROGRAM_FILE) == @__FILE__
+    main()
+end
