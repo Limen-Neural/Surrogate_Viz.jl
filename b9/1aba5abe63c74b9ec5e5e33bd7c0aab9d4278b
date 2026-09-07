@@ -1,0 +1,20 @@
+ext/CUDABackendExt.jl
+  s_2d5f80fb8407b9::t_5f660baf292c88 6
+  s_2d5f80fb8407b9::t_6cdddcacd3b74a 98-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "b91aba5abe63c74b9ec5e5e33bd7c0aab9d4278b",
+  "prompts": {},
+  "sessions": {
+    "s_2d5f80fb8407b9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "236ff508-26fa-466a-b4dd-3ff2f464f60f",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Raul Montoya Cardenas <montoyaraul34@gmail.com>"
+    }
+  }
+}
