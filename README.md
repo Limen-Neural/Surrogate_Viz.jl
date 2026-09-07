@@ -128,7 +128,9 @@ Surrogate_Viz.jl/
 │   └── marco_nano_base_q8_0/
 │       ├── dashboards/
 │       └── sr_results/
-├── SAAQ_discovery.jl             # SR.jl over raw RE4 telemetry
+├── SAAQ_discovery.jl             # SR.jl prototype over hardware telemetry
+│                                 # (synthetic SNN proxy + constructed target —
+│                                 #  see its header; not evidence about the SNN)
 ├── SAAQ_latent_discovery.jl      # SR.jl over 508-neuron latent telemetry
 ├── plot_saaq1_5_validation.jl    # SAAQ 1.5 paired-run validation dashboard
 ├── plot_latent_space.jl          # Latent space exploration plot
