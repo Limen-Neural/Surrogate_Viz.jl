@@ -37,6 +37,72 @@ function load_selected_runs(path::AbstractString)
     return runs
 end
 
+"""
+    no_match_report(runs, repeat_idx) -> String
+
+Explain why `blessed_pair`'s filter selected nothing.
+
+`only()` would report this as a bare "Collection is empty, must contain exactly
+1 element", which says nothing about the cause. The sibling
+compare_full_lineup_saaq1_5.jl already names its filter on failure.
+
+Every predicate is counted *independently* against the manifest rather than
+being explained by a fixed narrative. Whichever one is actually responsible
+shows `0 match` beside the values that are present, so this stays correct for a
+historical manifest that merely lacks the requested `repeat_idx` — a
+hard-coded "your data uses prompt-profile conditions" explanation would be
+wrong in exactly that case.
+"""
+function no_match_report(runs::AbstractVector, repeat_idx::Int)
+    n = length(runs)
+    observed(key) = sort(unique(string(get(r, key, "<absent>")) for r in runs))
+    matching(pred) = count(pred, runs)
+
+    # (label, required value, predicate) for each conjunct of the filter.
+    checks = [
+        ("blessed",          "true",                          r -> get(r, "blessed", false) == true),
+        ("campaign",         "baseline_csv",                  r -> get(r, "campaign", nothing) == "baseline_csv"),
+        ("model",            "olmoe_baseline",                r -> get(r, "model", nothing) == "olmoe_baseline"),
+        ("family",           "Olmoe",                         r -> get(r, "family", nothing) == "Olmoe"),
+        ("telemetry_source", "csv_re4_path_tracing_telemetry", r -> get(r, "telemetry_source", nothing) == "csv_re4_path_tracing_telemetry"),
+        ("rule",             "SaaqV1_5SqrtRate",              r -> get(r, "rule", nothing) == "SaaqV1_5SqrtRate"),
+        ("repeat_idx",       string(repeat_idx),              r -> haskey(r, "repeat_idx") && Int(r["repeat_idx"]) == repeat_idx),
+    ]
+
+    lines = String[
+        "compare_saaq1_5_baseline_pair.jl: no blessed runs matched.",
+        "  Manifest: $(SELECTED_RUNS_PATH) ($(n) runs)",
+        "  Per-criterion match counts (each counted independently):",
+    ]
+    blockers = String[]
+    for (label, required, pred) in checks
+        hits = matching(pred)
+        hits == 0 && push!(blockers, label)
+        marker = hits == 0 ? "  <- blocks everything" : ""
+        push!(lines, "    $(rpad(label, 17)) == $(rpad(required, 31)) $(lpad(hits, 3)) match$(marker)")
+        if hits == 0
+            push!(lines, "      observed: $(observed(label))")
+        end
+    end
+
+    push!(lines, "  Blocking criteria: $(isempty(blockers) ? "none individually — no single run satisfies all at once" : join(blockers, ", "))")
+
+    # Only draw the legacy-schema conclusion when the evidence supports it,
+    # rather than asserting it for every failure.
+    if "campaign" in blockers && "model" in blockers
+        push!(lines,
+            "  This looks like the heartbeat-era schema mismatch: the manifest has no " *
+            "matching campaign or model. That combination is what current sviz_* data " *
+            "produces, and this script is for historical paired runs only.")
+    elseif blockers == ["repeat_idx"]
+        push!(lines,
+            "  Only repeat_idx blocked. The manifest is otherwise compatible — " *
+            "try a repeat index that exists (see observed values above).")
+    end
+
+    return join(lines, "\n")
+end
+
 function blessed_pair(runs::AbstractVector, repeat_idx::Int)
     blessed_runs = filter(runs) do run
         get(run, "blessed", false) == true &&
@@ -49,29 +115,7 @@ function blessed_pair(runs::AbstractVector, repeat_idx::Int)
     end
 
     if isempty(blessed_runs)
-        # Report which criteria actually failed. This script targets the old
-        # heartbeat-era schema, so against current sviz_* data every one of
-        # these misses — and `only()` below would report that as a bare
-        # "Collection is empty, must contain exactly 1 element", which says
-        # nothing about why. Its sibling compare_full_lineup_saaq1_5.jl already
-        # names its filter on failure; this now does the same.
-        n = length(runs)
-        present(key) = count(r -> haskey(r, key), runs)
-        values_for(key) = sort(unique(string(get(r, key, "")) for r in runs if haskey(r, key)))
-        error(
-            "compare_saaq1_5_baseline_pair.jl: no blessed runs matched.\n" *
-            "  Manifest      : $(SELECTED_RUNS_PATH) ($(n) runs)\n" *
-            "  Required      : campaign=baseline_csv, model=olmoe_baseline, family=Olmoe,\n" *
-            "                  telemetry_source=csv_re4_path_tracing_telemetry,\n" *
-            "                  rule=SaaqV1_5SqrtRate, repeat_idx=$(repeat_idx)\n" *
-            "  campaign key  : present on $(present("campaign"))/$(n) runs" *
-            (present("campaign") == 0 ? "  <- absent entirely\n" : "; values $(values_for("campaign"))\n") *
-            "  models present: $(values_for("model"))\n" *
-            "  conditions    : $(values_for("condition"))\n" *
-            "This script is for historical heartbeat-era paired runs " *
-            "(condition=baseline/treatment). Current sviz_* runs use prompt-profile " *
-            "conditions and a renamed olmoe slug, so it will not match them.",
-        )
+        error(no_match_report(runs, repeat_idx))
     end
 
     off_matches = filter(run -> run["condition"] == "baseline", blessed_runs)
